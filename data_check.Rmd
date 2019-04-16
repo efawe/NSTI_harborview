@@ -1,0 +1,48 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+*NSTI_for_KL* has all the demographic, cost, and insurance data.  
+**"Total Cost"** is what we are interested in as outcome.  
+
+**Goal** is to determine whether there are characteristics that predict who will cost the most (top quartile). 
+
+*NSTI_meds_for_KL* has all the medications. 
+- which patients got which antibiotics for how long
+- when they were started, changed, and stopped in relationship to admission and last OR visit.
+
+*NSTI_debride_for_KL* gives list of OR visits 
+
+
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(stats)
+library(plyr)
+require(data.table)
+
+#change to your directory when running
+path <- "C:/Users/Kevin/Documents/GitHub/NSTI_harborview"
+setwd(path)
+
+
+# Importing dataset
+nsti <- read.csv("~/GitHub/NSTI_harborview/NSTI_for_KL.csv")
+#nsti_Meds <- fread("~/GitHub/NSTI_harborview/NSTI_meds_for_KL.csv",header = TRUE)
+
+```
+
+nsti: 78 variables
+- Patient, Age, Race
+- Discharge Date
+- Outcome??
+- Admit date
+
+
+```{r}
+head(nsti)
+#summary(nsti_Meds)
+```
+
