@@ -27,6 +27,8 @@ library(ggplot2)
 library(stats)
 library(plyr)
 require(data.table)
+library(tidyr)
+library(dplyr)
 
 #change to your directory when running
 path <- "C:/Users/Kevin/Documents/GitHub/NSTI_harborview"
@@ -36,6 +38,7 @@ setwd(path)
 # Importing dataset
 nsti <- fread("~/NSTI_for_KL.csv", header = TRUE)
 #nsti_Meds <- fread("~/GitHub/NSTI_harborview/NSTI_meds_for_KL.csv",header = TRUE)
+nsti <-data.frame(nsti)
 ```
 
 **Variables**(nsti: 78 variables)
@@ -101,8 +104,32 @@ NA
 ```{r}
 #removing the duplicate transfer binary 
 nsti <- subset(nsti, select = -c(TRANSFER))
+```
+
+```{r}
+#converting character to date data format
+dates = c("Discharge", "Admit.x", "Admit.y")
+nsti[dates] <- lapply(nsti[dates], function(x) as.Date(x, "%m/%d/%Y"))
+```
+```{r}
+#replacing NOT in race to NA
+nsti %>% mutate_at(vars(RACE), na_if, "NOT")
+```
+```{r}
+# converting categorical features to factor
+cols <- c("SEX", "RACE", "OUTCOME", "DC.DISPO", "MECHANISM.OF.INFECTION", "LOCATION.CODE.1", "LOCATION.CODE.2", "ICD.10..1.DESCRIPTION", "REGION",
+          "Insure_type")
+nsti[cols] <- lapply(nsti[cols], as.factor)
+```
+
+```{r}
+# The change is visable in the summary below 
+summary(nsti)
+```
 
 
+```{r}
+nsti
 ```
 
 
