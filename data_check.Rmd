@@ -24,12 +24,12 @@ library(plyr)
 require(data.table)
 
 #change to your directory when running
-#path <- "C:/Users/Kevin/Documents/GitHub/NSTI_harborview"
-#setwd(path)
+path <- "C:/Users/Kevin/Documents/GitHub/NSTI_harborview"
+setwd(path)
 
 
 # Importing dataset
-nsti <- fread("~/Documents/NSTI_for_KL.csv", header = TRUE)
+nsti <- fread("~/NSTI_for_KL.csv", header = TRUE)
 #nsti_Meds <- fread("~/GitHub/NSTI_harborview/NSTI_meds_for_KL.csv",header = TRUE)
 
 ```
