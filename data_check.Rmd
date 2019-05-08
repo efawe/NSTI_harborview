@@ -1,9 +1,14 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
-*NSTI_for_KL* has all the demographic, cost, and insurance data.  
+*NSTI_for_KL* has all the demographic, cost, and insurance data. 
+
+_________________________________________________________
+
 **"Total Cost"** is what we are interested in as outcome.  
 
 **Goal** is to determine whether there are characteristics that predict who will cost the most (top quartile). 
@@ -16,7 +21,7 @@ output: html_notebook
 
 
 
-```{r}
+```{r echo = FALSE, message=FALSE}
 library(tidyverse)
 library(ggplot2)
 library(stats)
@@ -31,11 +36,12 @@ setwd(path)
 # Importing dataset
 nsti <- fread("~/NSTI_for_KL.csv", header = TRUE)
 #nsti_Meds <- fread("~/GitHub/NSTI_harborview/NSTI_meds_for_KL.csv",header = TRUE)
-
 ```
 
-nsti: 78 variables
+**Variables**(nsti: 78 variables)
+
 **Numerical**
+
 - Patient, Age, Race
 - Discharge Date
 - Outcome?? (categorical)
@@ -47,6 +53,7 @@ nsti: 78 variables
 - Mech of infection (categorical)
 
 **Categorical**
+
 - Comorbid codes (Categorical seperated by ";")
 - co.morbids (numerical)
 - location code 1,2 (categorical, only on some patients)
@@ -63,6 +70,7 @@ nsti: 78 variables
 
 
 **Binary**
+
 - Transfer (binary)
 - **transfer** duplicate 
 - Debridement
