@@ -113,18 +113,33 @@ nsti[dates] <- lapply(nsti[dates], function(x) as.Date(x, "%m/%d/%Y"))
 ```
 ```{r}
 #replacing NOT in race to NA
-nsti %>% mutate_at(vars(RACE), na_if, "NOT")
+nsti$RACE[ nsti$RACE == "NOT"] <- NA
 ```
+
+Converting categorical features to factor
+
 ```{r}
-# converting categorical features to factor
 cols <- c("SEX", "RACE", "OUTCOME", "DC.DISPO", "MECHANISM.OF.INFECTION", "LOCATION.CODE.1", "LOCATION.CODE.2", "ICD.10..1.DESCRIPTION", "REGION",
-          "Insure_type")
+          "Insure_type", "ICD.10.CODE..1")
+
+
 nsti[cols] <- lapply(nsti[cols], as.factor)
 ```
 
+
 ```{r}
-# The change is visable in the summary below 
-summary(nsti)
+nsti["CoMorbid.Codes"] <- lapply(nsti["CoMorbid.Codes"], function(x) strsplit(x, ";"))
+nsti["Insure"] <- lapply(nsti["Insure"], function(x) strsplit(x, ";"))
+```
+Region is weird case in which is can have more than one region. Not sure how we want to address this.
+
+Issue with patient 179*NSTI or V1 (70) which has a co.morbids value of asthma 
+
+
+```{r}
+# The change is visable in the summary
+nsti[nsti$V1 == 70,]
+
 ```
 
 
