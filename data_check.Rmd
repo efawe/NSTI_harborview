@@ -36,9 +36,10 @@ setwd(path)
 
 
 # Importing dataset
-nsti <- fread("~/NSTI_for_KL.csv", header = TRUE)
-#nsti_Meds <- fread("~/GitHub/NSTI_harborview/NSTI_meds_for_KL.csv",header = TRUE)
-nsti <-data.frame(nsti)
+nsti <- data.frame(fread("~/NSTI_for_KL.csv", header = TRUE))
+nsti_debrid <- data.frame(fread("~/NSTI_debride_for_KL.csv", header = TRUE))
+nsti_Meds <- data.frame(fread("~/NSTI_meds_for_KL.csv",header = TRUE))
+
 ```
 
 **Variables**(nsti: 78 variables)
@@ -145,6 +146,41 @@ nsti[nsti$V1 == 70,]
 
 ```{r}
 nsti
+```
+
+```{r}
+head(nsti_debrid)
+```
+
+```{r}
+dates = c("ADMIT.DATE", "DEBRIDE.1.START.DATE", "DEB.2.DATE","DEB3.DATE", "DEB4.DATE", "REC1.DATE", "REC2.DATE", "REC3.DATE", "REC4.DATE", "DC.Date")
+nsti_debrid[dates] <- lapply(nsti_debrid[dates], function(x) as.Date(x, "%m/%d/%Y"))
+
+cols <- c("DEB1.CPT", "DEB2.CPT", "DEB3.CPT", "DEB4.CPT", "REC1CPT", "REC1.TOTAL", "REC1.EXP", "REC1.FLAP",
+          "REC2.CPT", "REC2.EXP","REC2.FLAP", "Transfer")
+
+nsti_debrid[cols] <- lapply(nsti_debrid[cols], as.factor)
+```
+
+```{r}
+summary(nsti_debrid)
+```
+
+```{r}
+
+dates = c("ADMIT.DATE", "Med.Start.Date")
+nsti_Meds[dates] <- lapply(nsti_Meds[dates], function(x) as.Date(x, "%m/%d/%Y"))
+
+cols <- c("Meds", "Med.Location")
+
+nsti_Meds[cols] <- lapply(nsti_Meds[cols], as.factor)
+
+
+```
+
+
+```{r}
+summary(nsti_Meds)
 ```
 
 
