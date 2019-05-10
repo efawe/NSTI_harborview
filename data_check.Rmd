@@ -104,7 +104,7 @@ NA
 
 ```{r}
 #removing the duplicate transfer binary 
-nsti <- subset(nsti, select = -c(TRANSFER))
+nsti <- subset(nsti, select = -c(TRANSFER,OUTCOME, isFemale))
 ```
 
 ```{r}
@@ -120,7 +120,7 @@ nsti$RACE[ nsti$RACE == "NOT"] <- NA
 Converting categorical features to factor
 
 ```{r}
-cols <- c("SEX", "RACE", "OUTCOME", "DC.DISPO", "MECHANISM.OF.INFECTION", "LOCATION.CODE.1", "LOCATION.CODE.2", "ICD.10..1.DESCRIPTION", "REGION",
+cols <- c("SEX", "RACE", "DC.DISPO", "MECHANISM.OF.INFECTION", "LOCATION.CODE.1", "LOCATION.CODE.2", "ICD.10..1.DESCRIPTION", "REGION",
           "Insure_type", "ICD.10.CODE..1")
 
 
@@ -131,6 +131,7 @@ nsti[cols] <- lapply(nsti[cols], as.factor)
 ```{r}
 nsti["CoMorbid.Codes"] <- lapply(nsti["CoMorbid.Codes"], function(x) strsplit(x, ";"))
 nsti["Insure"] <- lapply(nsti["Insure"], function(x) strsplit(x, ";"))
+nsti["Patient"] <- lapply(nsti["Patient"], function(x) str_sub(x, 1,-6))
 ```
 Region is weird case in which is can have more than one region. Not sure how we want to address this.
 
@@ -138,7 +139,6 @@ Issue with patient 179*NSTI or V1 (70) which has a co.morbids value of asthma
 
 
 ```{r}
-# The change is visable in the summary
 nsti[nsti$V1 == 70,]
 
 ```
@@ -149,7 +149,20 @@ nsti
 ```
 
 ```{r}
-head(nsti_debrid)
+ggplot(data = nsti, aes(x = AGE)) +
+  geom_bar() + 
+   facet_grid(. ~ Death) 
+ggplot(data = nsti, aes(x = Indirect.Costs)) +
+  geom_bar() 
+```
+
+```{r}
+nsti$Indirect.Costs
+```
+
+
+```{r}
+nsti_debrid
 ```
 
 ```{r}
@@ -181,6 +194,14 @@ nsti_Meds[cols] <- lapply(nsti_Meds[cols], as.factor)
 
 ```{r}
 summary(nsti_Meds)
+```
+
+```{r}
+test <- merge(nsti,nsti_debrid, by.x = "Patient", by.y = "study_ID")
+```
+
+```{r}
+test
 ```
 
 
