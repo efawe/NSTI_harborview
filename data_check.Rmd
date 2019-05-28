@@ -1,6 +1,7 @@
 ---
 title: "R Notebook"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
 ---
@@ -26,21 +27,22 @@ library(tidyverse)
 library(ggplot2)
 library(stats)
 library(plyr)
+library(dplyr)
 require(data.table)
 library(tidyr)
-library(dplyr)
+library(chron)
+library(lubridate)
 
 #change to your directory when running
-path <- "C:/Users/Kevin/Documents/GitHub/NSTI_harborview"
+path <- "C:/Users/Kevin Li/Documents"
 setwd(path)
 
-
 # Importing dataset
-nsti <- data.frame(fread("~/NSTI_for_KL.csv", header = TRUE))
-nsti_debrid <- data.frame(fread("~/NSTI_debride_for_KL.csv", header = TRUE))
-nsti_Meds <- data.frame(fread("~/NSTI_meds_for_KL.csv",header = TRUE))
-
+nsti <- data.frame(fread("NSTI_for_KL.csv", header = TRUE))
+nsti_debrid <- data.frame(fread("NSTI_debride_for_KL.csv", header = TRUE))
+nsti_Meds <- data.frame(fread("NSTI_meds_for_KL.csv",header = TRUE))
 ```
+
 
 **Variables**(nsti: 78 variables)
 
@@ -111,28 +113,22 @@ nsti <- subset(nsti, select = -c(TRANSFER,OUTCOME, isFemale))
 #converting character to date data format
 dates = c("Discharge", "Admit.x", "Admit.y")
 nsti[dates] <- lapply(nsti[dates], function(x) as.Date(x, "%m/%d/%Y"))
-```
-```{r}
+
 #replacing NOT in race to NA
 nsti$RACE[ nsti$RACE == "NOT"] <- NA
-```
 
-Converting categorical features to factor
-
-```{r}
+#Converting categorical features to factor
 cols <- c("SEX", "RACE", "DC.DISPO", "MECHANISM.OF.INFECTION", "LOCATION.CODE.1", "LOCATION.CODE.2", "ICD.10..1.DESCRIPTION", "REGION",
           "Insure_type", "ICD.10.CODE..1")
-
-
 nsti[cols] <- lapply(nsti[cols], as.factor)
-```
 
-
-```{r}
+#Splitting features that are bound by semi colons into a list
 nsti["CoMorbid.Codes"] <- lapply(nsti["CoMorbid.Codes"], function(x) strsplit(x, ";"))
 nsti["Insure"] <- lapply(nsti["Insure"], function(x) strsplit(x, ";"))
 nsti["Patient"] <- lapply(nsti["Patient"], function(x) str_sub(x, 1,-6))
+
 ```
+
 Region is weird case in which is can have more than one region. Not sure how we want to address this.
 
 Issue with patient 179*NSTI or V1 (70) which has a co.morbids value of asthma 
@@ -140,80 +136,151 @@ Issue with patient 179*NSTI or V1 (70) which has a co.morbids value of asthma
 
 ```{r}
 nsti[nsti$V1 == 70,]
-
 ```
 
+**Debrid**
+Changing the date features that were typed under character to actual date types as posicit as well as features that should be factors as well 
 
 ```{r}
-nsti
-```
-
-```{r}
-ggplot(data = nsti, aes(x = AGE)) +
-  geom_bar() + 
-   facet_grid(. ~ Death) 
-ggplot(data = nsti, aes(x = Indirect.Costs)) +
-  geom_bar() 
-```
-
-```{r}
-nsti$Indirect.Costs
-```
-
-
-```{r}
-nsti_debrid
-```
-
-```{r}
+#changing to date type
 dates = c("ADMIT.DATE", "DEBRIDE.1.START.DATE", "DEB.2.DATE","DEB3.DATE", "DEB4.DATE", "REC1.DATE", "REC2.DATE", "REC3.DATE", "REC4.DATE", "DC.Date")
 nsti_debrid[dates] <- lapply(nsti_debrid[dates], function(x) as.Date(x, "%m/%d/%Y"))
 
+#changing to factors 
 cols <- c("DEB1.CPT", "DEB2.CPT", "DEB3.CPT", "DEB4.CPT", "REC1CPT", "REC1.TOTAL", "REC1.EXP", "REC1.FLAP",
           "REC2.CPT", "REC2.EXP","REC2.FLAP", "Transfer")
-
 nsti_debrid[cols] <- lapply(nsti_debrid[cols], as.factor)
 ```
 
-```{r}
-summary(nsti_debrid)
-```
+**Meds**
+Converting the features to factors 
 
 ```{r}
-
-dates = c("ADMIT.DATE", "Med.Start.Date")
-nsti_Meds[dates] <- lapply(nsti_Meds[dates], function(x) as.Date(x, "%m/%d/%Y"))
-
 cols <- c("Meds", "Med.Location")
-
 nsti_Meds[cols] <- lapply(nsti_Meds[cols], as.factor)
+```
+
+Structuring the time data in medication
+```{r}
+#creating a new dataframe with only these medications 
+nstimeds_new <- data.frame(nsti_Meds[nsti_Meds["Meds"] != c("DOBU", "ENOX", "EPINEP", "NOPRESS", "STERIOD", "VASO", "WARF", 
+                                                        "ANTIBIOT", "DOP", "HEP", "IVIG", "NOREPI", "PCC", "SOFA"),])
+#removing med location
+nstimeds_new <- subset(nstimeds_new, select = -c(Med.Location))
+
+#removing entries that have a NOT date/time or UNK might go back and change if there is an alternative route 
+nstimeds_new <- nstimeds_new[nstimeds_new["Med.Start.Date"] != "NOT" & nstimeds_new["Med.Start.Date"] != "UNK" & nstimeds_new["Med.Start.Date"] != "",]
 
 
+#converting NOT to 0.00 Not a good system need to revise if we are using med location 
+nstimeds_new[nstimeds_new == "NOT"] <- "0:00"
+nstimeds_new[nstimeds_new == ""]  <- "0:00"
+nstimeds_new[nstimeds_new == "UNK"]   <- "0:00"
+
+# removes all na. Need to reassess later for 
+nstimeds_new = nstimeds_new[complete.cases(nstimeds_new),]
+```
+
+```{r}
+#Converting time and date to a new feature with both 
+nstimeds_new$totalTime <- strptime(paste(nstimeds_new$Med.Start.Date,nstimeds_new$Med.Start.Time, sep = " "),"%m/%d/%Y %H:%M")
+```
+
+```{r}
+#Creating a data structure that categorizes medication, time and orders them within a list in a list 
+# in the nsti data as it has the actual length of patients 
+nsti$medsort <- list("")
+
+for (i in nsti$Patient){
+  temp <- nstimeds_new[which(nstimeds_new$study_ID == i,),]
+  meds = strsplit(paste(unique(temp$Meds)), " ")
+  medsdf = list()
+  for (y in meds){
+    tempmed <- temp[temp$Meds == y,]
+    medsdf[[y]] <- tempmed[order(tempmed["totalTime"]),]$totalTime
+  }
+  nsti[nsti$Patient == i,]$medsort <- list(medsdf)
+} 
+```
+
+```{r}
+#merging datasets with medication data
+nsti_new <- merge(nsti,nsti_debrid, by.x = "Patient", by.y = "study_ID")
+nsti_new <- nsti_new[nsti_new$Minutes.from > 0,]
+nsti_new <- nsti_new[complete.cases(nsti_new$Minutes.from),]
+nsti_med_time <- subset(nsti_new, select = c(Patient, Admit.x, medsort,Minutes.from))
+```
+
+```{r}
+head(nsti$medsort)
+```
+
+
+
+```{r}
+#ggplot(data = medsdf, aes(x = as.numeric(row.names(medsdf)),y = hours)) + 
+#  geom_step(direction = "hv")
+  
+```
+
+```{r}
+#ggplot(data = tail(medsdf,-3), aes(x = as.numeric(row.names(tail(medsdf,-3))),y = hours)) + 
+#  geom_step(direction = "hv")
 ```
 
 
 ```{r}
-summary(nsti_Meds)
+# graphing all of the points from patients 
+
+medsdf = data.frame(order = integer(), med = character(), diff = character())
+
+for (i in nsti_new$Patient){
+  temp <- nstimeds_new[which(nstimeds_new$study_ID == i,),]
+  meds = strsplit(paste(unique(temp$Meds)), " ")
+  for (y in meds){
+    tempmed <- temp[temp$Meds == y,]
+    if (nrow(tempmed) >1){
+      sortedtime <- tempmed[order(tempmed["totalTime"]),]$totalTime
+      medconv <- data.frame(med1 = head(sortedtime, -1), med2 = tail(sortedtime, -1))
+      medconv$diff <- difftime(medconv$med2,medconv$med1, units = "hours")
+      medconv$med <- rep(y)
+      medconv$order <- as.numeric(row.names(medconv))
+      medconv$admittolast <- nsti_new[nsti_new$Patient == i,]$Minutes.from
+      medsdf = rbind(medsdf, subset(medconv, select = c(diff, med,order, admittolast)))
+    }
+  }
+} 
+
 ```
 
 ```{r}
-test <- merge(nsti,nsti_debrid, by.x = "Patient", by.y = "study_ID")
+head(nsti_new)
 ```
 
 ```{r}
-test
+test = medsdf[medsdf$diff < 30,]
+ggplot(data = test[test$med == "VANC",], aes(x = order, y = diff, colour = admittolast)) +
+  geom_point() +
+  scale_colour_gradientn(colours = terrain.colors(10)) +
+  labs(colour = "Admit to last DB", y = "Minutes between each medication change (Hours)", x = "Order of medication change", title = "VANC")
+ggplot(data = test[test$med == "CLIN",], aes(x = order, y = diff, colour = admittolast)) +
+  geom_point() +
+  scale_colour_gradientn(colours = terrain.colors(10)) +
+  labs(colour = "Admit to last DB", y = "Minutes between each medication change (Hours)", x = "Order of medication change", title = "CLIN")
+ggplot(data = test[test$med == "PCNG",], aes(x = order, y = diff, colour = admittolast)) +
+  geom_point() +
+  scale_colour_gradientn(colours = terrain.colors(10)) +
+  labs(colour = "Admit to last DB", y = "Minutes between each medication change (Hours)", x = "Order of medication change", title = "PCNG")
 ```
-
-
 ```{r}
-ggplot(data = nsti, aes(x = AGE)) +
-  geom_bar()
-ggplot(data = nsti, aes(x = SEX)) +
-  geom_bar()
-ggplot(data = nsti, aes(x = OUTCOME)) +
-  geom_bar()
-ggplot(data = nsti, aes(x = ICD.10..1.DESCRIPTION)) +
-  geom_bar()
-#summary(nsti_Meds)
+
+ggplot(data = medsdf, aes(x = order, y = diff, colour = med)) +
+  geom_point()
 ```
+```{r}
+ggplot(data = medsdf[medsdf$diff >100,], aes(x= diff)) +
+  geom_histogram()
+```
+
+
 
