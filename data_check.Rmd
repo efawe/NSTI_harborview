@@ -32,6 +32,9 @@ require(data.table)
 library(tidyr)
 library(chron)
 library(lubridate)
+library(data.tree)
+library(plotly)
+
 
 #change to your directory when running
 #path <- "C:/Users/Kevin Li/Documents"
@@ -187,6 +190,212 @@ nstimeds_new$totalTime <- strptime(paste(nstimeds_new$Med.Start.Date,nstimeds_ne
 ```
 
 ```{r}
+#merging datasets with medication data
+nsti_new <- merge(nsti,nsti_debrid, by.x = "Patient", by.y = "study_ID")
+nsti_new <- nsti_new[nsti_new$Minutes.from > 0,]
+nsti_new <- nsti_new[complete.cases(nsti_new$Minutes.from),]
+#nsti_med_time <- subset(nsti_new, select = c(Patient, Admit.x, medsort,Minutes.from))
+```
+
+- Time between admission and last debridement
+- Total time each patient received each antibiotic (should be the difference between the first med start date/time until the last med start date/time for each patient--ignore all time points between first and last administration)
+
+- Time between last debridement and last med start date/time for each antibiotic
+
+diff = last medication to first medication
+admittilast = minutes from admit to last deb 
+debtomed = hours from last med to last deb 
+
+```{r}
+
+medsdf = data.frame(patient = integer(), med = character(), diff = character())
+
+
+for (i in nsti_new$Patient){
+  temp <- nstimeds_new[which(nstimeds_new$study_ID == i,),]
+  meds = strsplit(paste(unique(temp$Meds)), " ")
+  debridepatient = nsti_debrid %>% subset(study_ID == i)
+  debridedate = strptime(paste(debridepatient$DEBRIDE.1.START.DATE,debridepatient$DEBRIDE.1.START.TIME, sep = " "),"%Y-%m-%d %H:%M") +
+                debridepatient$Minutes.from.1st.Deb.to.last*60
+  for (y in meds){
+    tempmed <- temp[temp$Meds == y,]
+    if (nrow(tempmed) >1){
+      sortedtime <- tempmed[order(tempmed["totalTime"]),]$totalTime
+      medconv <- data.frame(med1 = head(sortedtime, 1), med2 = tail(sortedtime, 1))
+      medconv$diff <- difftime(medconv$med2,medconv$med1, units = "hours")
+      if (medconv$diff %>% is_empty()) {
+        break
+      }
+      medconv$med <- rep(y)
+      medconv$admittolast <- nsti_new[nsti_new$Patient == i,]$Minutes.from
+      medconv$debtomed <- difftime(medconv$med2, debridedate, units = "hours")
+      medconv$patient <- i
+      
+      medsdf = rbind(medsdf, subset(medconv, select = c(diff, med, admittolast, patient, debtomed)))
+    }
+  }
+} 
+```
+
+
+Vizualization towards understadning the new debride to med calculations 
+
+```{r}
+# finding out the outliers 
+ggplot(data = melt(medsdf %>% subset(admittolast <12500) %>% subset(diff < 500) %>% subset(debtomed < 250)), aes(x=variable, y=value)) + 
+  geom_boxplot() +
+  facet_wrap(.~ variable, scale = "free")
+
+
+```
+
+```{r fig.height = 10, fig.width = 15}
+
+ggplot(data = medsdf , aes( x = admittolast)) +
+  geom_histogram() +
+  scale_colour_gradientn(colours = terrain.colors(10)) + 
+  facet_wrap(.~ med)
+ggplot(data = medsdf , aes( x = diff)) +
+  geom_histogram() +
+  scale_colour_gradientn(colours = terrain.colors(10)) + 
+  facet_wrap(.~ med)
+
+ggplot(data = medsdf , aes( x = debtomed)) +
+  geom_histogram() +
+  scale_colour_gradientn(colours = terrain.colors(10)) + 
+  facet_wrap(.~ med)
+
+```
+
+
+
+```{r fig.height = 20, fig.width = 15}
+test = medsdf %>% subset(admittolast <12500) %>% subset(diff < 500) %>% subset(debtomed < 250)
+
+ggplot(data = medsdf, aes(y = diff, x = admittolast)) +
+  geom_point() +
+  scale_colour_gradientn(colours = terrain.colors(10)) +
+  #facet_wrap(med~. ) +
+  labs( x = "Admit to last debridement", y= "Difference from last to first med") +
+  geom_text(aes(label=ifelse((admittolast>4*IQR(admittolast) | diff > 4*IQR(diff)),patient,"")), hjust=1.1)
+
+
+```
+
+```{r warning= FALSE}
+medwane <- data.frame(patient = integer())
+
+for (i in nsti_new$Patient){
+  if ((which(nstimeds_new$study_ID == i) %>% is_empty()) != TRUE){
+    temp <- nstimeds_new[which(nstimeds_new$study_ID == i,),]
+    temptime <- temp[order(temp["totalTime"]),]
+    theDate <- head(temptime$totalTime, 1)
+    end <- tail(temptime$totalTime, 1)
+    daycount = 0
+    while (theDate <= end){
+      daycount = daycount + 1
+      tempmed <- temptime %>% subset(totalTime >= theDate) %>% subset(totalTime <= theDate + days(1))
+      tempmednum = data.frame(unimed = length(unique(tempmed$Meds)), patient = i, daycount = daycount)
+      tempmednum$meds = list(unique(tempmed$Meds))
+      medwane = rbind(medwane, tempmednum)
+      
+      theDate <- theDate + days(1)
+    }
+  }
+} 
+
+head(medwane$meds)
+
+```
+
+```{r fig.width= 20}
+
+#data.tree
+head(medwane)
+
+medwanetrans <- data.frame(patient = integer())
+
+for (i in unique(medwane$patient)){
+  temp <- medwane[medwane$patient == i,]
+  tempdf <- data.frame(patient = i)
+  tempdf$unimed <- list(temp$unimed)
+  medwanetrans <- rbind(medwanetrans, tempdf)
+}
+
+medwanetrans$pathString <- paste("Meds A day",sapply(medwanetrans$unimed, paste, collapse = "/"), medwanetrans$patient, sep = "/")
+
+medwanetrans$medcount <- sapply(medwanetrans$unimed, length)
+medwanetrans %>% subset(medwanetrans$medcount <= 10)
+
+testTree <- as.Node(medwanetrans %>% subset(medwanetrans$medcount <= 10))
+
+print(testTree, limit = 200)
+png("test.png", width = 600, height = 600)
+plot(testTree)
+
+ToDiagrammeRGraph(testTree)
+
+# Sankey Diagram
+
+head(medwane$meds[[3]])
+
+p <- plot_ly(
+    type = "sankey",
+    orientation = "h",
+
+    node = list(
+      label = c("A1", "A2", "B1", "B2", "C1", "C2"),
+      color = c("blue", "blue", "blue", "blue", "blue", "blue"),
+      pad = 15,
+      thickness = 20,
+      line = list(
+        color = "black",
+        width = 0.5
+      )
+    ),
+
+    link = list(
+      source = c(0,1,0,2,3,3),
+      target = c(2,3,3,4,4,5),
+      value =  c(8,4,2,8,4,2)
+    )
+  ) %>% 
+  layout(
+    title = "Basic Sankey Diagram",
+    font = list(
+      size = 10
+    )
+)
+
+```
+
+
+```{r fig.height= 7, fig.width = 15}
+ggplot(data = medwane, aes(x = daycount, y = unimed)) +
+  geom_jitter()
+ggplot(data = medwane %>% subset(daycount < 50), aes(x= daycount)) +
+  geom_density()
+
+#looks nice but pointless
+ggplot(data = medwane %>% subset(daycount < 50), aes(x= daycount, y = unimed)) +
+  geom_bar(stat = "identity",aes(fill = patient)) +
+  theme(legend.position = "none") 
+
+ggplot(data = medwane %>% subset(daycount < 30), aes(y = unimed, x =daycount)) + 
+  geom_boxplot() +
+  scale_y_continuous(breaks=c(0:10)) +
+  facet_grid(.~daycount, scale = "free")
+
+ggplot(data = medwane, aes(y = unimed, x =daycount)) + 
+  #geom_line() +
+  scale_y_continuous(breaks=c(0:10))+
+  theme(legend.position = "none") +
+  geom_smooth(method = 'loess', se = FALSE)
+  
+```
+
+
+```{r}
 #Creating a data structure that categorizes medication, time and orders them within a list in a list 
 # in the nsti data as it has the actual length of patients 
 nsti$medsort <- list("")
@@ -203,19 +412,11 @@ for (i in nsti$Patient){
 } 
 ```
 
-```{r}
-#merging datasets with medication data
-nsti_new <- merge(nsti,nsti_debrid, by.x = "Patient", by.y = "study_ID")
-nsti_new <- nsti_new[nsti_new$Minutes.from > 0,]
-nsti_new <- nsti_new[complete.cases(nsti_new$Minutes.from),]
-nsti_med_time <- subset(nsti_new, select = c(Patient, Admit.x, medsort,Minutes.from))
-```
+
 
 ```{r}
-head(nsti$medsort)
+#head(nsti$medsort)
 ```
-
-
 
 ```{r}
 #ggplot(data = medsdf, aes(x = as.numeric(row.names(medsdf)),y = hours)) + 
@@ -243,10 +444,15 @@ for (i in nsti_new$Patient){
       sortedtime <- tempmed[order(tempmed["totalTime"]),]$totalTime
       medconv <- data.frame(med1 = head(sortedtime, -1), med2 = tail(sortedtime, -1))
       medconv$diff <- difftime(medconv$med2,medconv$med1, units = "hours")
+      medconv <- medconv %>% subset(diff > 0) # removes any where that the difference in time is a zero 
+      if (medconv$diff %>% is_empty()) {
+        break
+      }
       medconv$med <- rep(y)
       medconv$order <- as.numeric(row.names(medconv))
       medconv$admittolast <- nsti_new[nsti_new$Patient == i,]$Minutes.from
-      medsdf = rbind(medsdf, subset(medconv, select = c(diff, med,order, admittolast)))
+      medconv$patient <- i
+      medsdf = rbind(medsdf, subset(medconv, select = c(diff, med,order, admittolast, patient)))
     }
   }
 } 
@@ -254,11 +460,11 @@ for (i in nsti_new$Patient){
 ```
 
 ```{r}
-head(nsti_new)
+medconv$diff %>% is_empty()
 ```
 
-```{r}
-test = medsdf[medsdf$diff < 30,]
+```{r fig.height = 20, fig.width = 15}
+test = medsdf %>% subset(diff < 30) %>% subset(admittolast <40000)
 ggplot(data = test[test$med == "VANC",], aes(x = order, y = diff, colour = admittolast)) +
   geom_point() +
   scale_colour_gradientn(colours = terrain.colors(10)) +
@@ -272,15 +478,92 @@ ggplot(data = test[test$med == "PCNG",], aes(x = order, y = diff, colour = admit
   scale_colour_gradientn(colours = terrain.colors(10)) +
   labs(colour = "Admit to last DB", y = "Minutes between each medication change (Hours)", x = "Order of medication change", title = "PCNG")
 ```
-```{r}
 
-ggplot(data = medsdf, aes(x = order, y = diff, colour = med)) +
-  geom_point()
-```
-```{r}
-ggplot(data = medsdf[medsdf$diff >100,], aes(x= diff)) +
-  geom_histogram()
+
+
+Seems like half of the antibiotics dont have many datapoints so it is better to elimate those 
+
+*No to almost no data available*
+- ANTIBIOT,HEP, NOREPI, PCC, GENT 
+
+*Limited amount of data*
+- CIPR, LEVO, METR, PIPE, SOFA
+
+*A lot of data*
+- CLIN, MERO, PCNG, VANC
+
+```{r fig.height = 20, fig.width = 15}
+
+ggplot(data = test, aes(x = order, y = diff, colour = admittolast)) +
+  geom_point() +
+  scale_colour_gradientn(colours = terrain.colors(10)) +
+  facet_grid(med~. ) +
+  labs(colour = "Admit to last DB", y = "Minutes between each medication change (Hours)", x = "Order of medication change")
+
+
 ```
 
+```{r  fig.height = 20, fig.width = 15}
+#ANTIBIOT,HEP, NOREPI, PCC, GENT 
+lowdatamed = test[which(test$med == "ANTIBIOT"| test$med == "NOREPI" |test$med == "PCC" |test$med == "GENT" ),]
+ggplot(data = lowdatamed, aes(x = order, y = diff, colour = admittolast)) +
+  geom_point() +
+  scale_colour_gradientn(colours = terrain.colors(10)) +
+  facet_grid(med~. ) +
+  labs(colour = "Admit to last DB", y = "Minutes between each medication change (Hours)", x = "Order of medication change")
+
+meddatamed = test[which(test$med == "CIPR"| test$med == "LEVO" |test$med == "METR" |test$med == "PIPE" |test$med == "SOFA"),]
+
+ggplot(data = meddatamed, aes(x = order, y = diff, colour = admittolast)) +
+  geom_point() +
+  scale_colour_gradientn(colours = terrain.colors(10)) +
+  facet_grid(med~. ) +
+  labs(colour = "Admit to last DB", y = "Minutes between each medication change (Hours)", x = "Order of medication change")
+
+highdatamed = test[which(test$med == "CLIN"| test$med == "MERO" |test$med == "PCNG" |test$med == "VANC" ),]
+
+ggplot(data = highdatamed, aes(x = order, y = diff, colour = admittolast)) +
+  geom_point() +
+  scale_colour_gradientn(colours = terrain.colors(10)) +
+  facet_grid(med~. ) +
+  labs(colour = "Admit to last DB", y = "Minutes between each medication change (Hours)", x = "Order of medication change")
+
+
+```
+
+```{r fig.height = 20, fig.width = 15}
+highdatamed = test[which(test$med == "CLIN"| test$med == "MERO" |test$med == "VANC" ),]
+
+ggplot(data = highdatamed, aes(x = order, y = diff, colour = admittolast)) +
+  geom_point() +
+  scale_colour_gradientn(colours = terrain.colors(10)) +
+  facet_grid(med~. ) +
+  labs(colour = "Admit to last DB", y = "Minutes between each medication change (Hours)", x = "Order of medication change")
+
+```
+
+
+```{r fig.height = 13, fig.width = 15}
+filteredtest <- test[which(test$med == "CLIN"| test$med == "MERO" |test$med == "VANC"|test$med == "CIPR"| test$med == "LEVO" |test$med == "METR" |test$med == "PIPE" |test$med == "SOFA"),]
+
+ggplot(data = filteredtest, aes(x = admittolast, fill = med)) +
+  geom_histogram(position = "fill")
+
+ggplot(data = filteredtest, aes(x = admittolast, fill = med)) +
+  geom_histogram(position = "stack")
+``` q
+```{r fig.height = 20, fig.width = 15}
+
+highdatamed = test[which(test$med == "CLIN"| test$med == "MERO" |test$med == "PCNG" |test$med == "VANC" ),]
+ggplot(data = test[which(test$patient == 1),], aes(x = order, y = diff, col = patient)) +
+  geom_line() +
+  facet_grid(med~. )+
+  theme(legend.position = "none") 
+
+```
+
+```{r}
+CPPROC2014 %>% subset(PROC == 9670)
+```
 
 
