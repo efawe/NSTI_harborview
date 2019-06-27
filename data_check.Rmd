@@ -23,29 +23,25 @@ _________________________________________________________
 
 
 ```{r echo = FALSE, message=FALSE}
-library(plyr); library(dplyr)
-library(tidyverse)
-library(ggplot2)
+library(plyr); library(dplyr) # data manipulation
+library(tidyverse) 
+library(ggplot2) # data visualization
 library(stats)
 
-require(data.table)
+require(data.table) # data visualization
 library(tidyr)
 library(chron)
 library(lubridate)
 library(data.tree)
 library(plotly)
 
-
-#change to your directory when running
-#path <- "C:/Users/Kevin Li/Documents"
-#setwd(path)
-
 # Importing dataset
 nsti <- data.frame(fread("NSTI_for_KL.csv", header = TRUE))
 nsti_debrid <- data.frame(fread("NSTI_debride_for_KL.csv", header = TRUE))
 nsti_Meds <- data.frame(fread("NSTI_meds_for_KL.csv",header = TRUE))
-```
+NSTI_labs <- data.frame(fread("NSTI_labs_for_KL.csv", header = TRUE))
 
+```
 
 **Variables**(nsti: 78 variables)
 
@@ -72,11 +68,8 @@ nsti_Meds <- data.frame(fread("NSTI_meds_for_KL.csv",header = TRUE))
 - direct cost days? (only on some patients)
 - direct/indirect cost/total cost (numerical)
 - direct cost index / pb hmc (direct/inndirect/total cost) / pb uwp gross charges / cost allocation (only on some patients )
-
 - Vent free days (numerical)
-
 - insurance & type (categorical)
-
 
 **Binary**
 
@@ -90,22 +83,11 @@ nsti_Meds <- data.frame(fread("NSTI_meds_for_KL.csv",header = TRUE))
 - public/private/uninsured insurance
 - other??
 
-Questions: Why some features aren't on all patients 
-
-
 ```{r}
-head(nsti)
+# stats of the inital files 
 summary(nsti)
+head(nsti)
 ```
-
-Things I need to fix 
-- SEX binary 
-- discharge, admit x/y 
-- death, is female, transfer is considered a numerical vs binary 
-
-NA 
-- Some features have emtpy strings instead for missing values 
-- Others have NA's this usally starts when we get to PB costs 
 
 ```{r}
 #removing the duplicate transfer binary 
@@ -133,9 +115,7 @@ nsti["Patient"] <- lapply(nsti["Patient"], function(x) str_sub(x, 1,-6))
 ```
 
 Region is weird case in which is can have more than one region. Not sure how we want to address this.
-
 Issue with patient 179*NSTI or V1 (70) which has a co.morbids value of asthma 
-
 
 ```{r}
 nsti[nsti$V1 == 70,]
@@ -174,7 +154,6 @@ nstimeds_new <- subset(nstimeds_new, select = -c(Med.Location))
 #removing entries that have a NOT date/time or UNK might go back and change if there is an alternative route 
 nstimeds_new <- nstimeds_new[nstimeds_new["Med.Start.Date"] != "NOT" & nstimeds_new["Med.Start.Date"] != "UNK" & nstimeds_new["Med.Start.Date"] != "",]
 
-
 #converting NOT to 0.00 Not a good system need to revise if we are using med location 
 nstimeds_new[nstimeds_new == "NOT"] <- "0:00"
 nstimeds_new[nstimeds_new == ""]  <- "0:00"
@@ -197,24 +176,23 @@ nsti_new <- nsti_new[complete.cases(nsti_new$Minutes.from),]
 #nsti_med_time <- subset(nsti_new, select = c(Patient, Admit.x, medsort,Minutes.from))
 ```
 
-- Time between admission and last debridement
-- Total time each patient received each antibiotic (should be the difference between the first med start date/time until the last med start date/time for each patient--ignore all time points between first and last administration)
-
-- Time between last debridement and last med start date/time for each antibiotic
-
-diff = last medication to first medication
-admittilast = minutes from admit to last deb 
-debtomed = hours from last med to last deb 
+Features I need to create:
+- Admittolast: Time between admission and last debridement
+     - minutes from admit to last deb
+- Diff: Total time each patient received each antibiotic (should be the difference between the first med start date/time until the last med start date/time for each patient--ignore all time points between first and last administration)
+     - last medication to first medication
+- Debtomed:  Time between last debridement and last med start date/time for each antibiotic
+     - hours from last med to last deb 
 
 ```{r}
+medsdf = data.frame(patient = integer(), med = character(), diff = character()) # empty df
 
-medsdf = data.frame(patient = integer(), med = character(), diff = character())
-
-
+# for loop that creates the features 
 for (i in nsti_new$Patient){
   temp <- nstimeds_new[which(nstimeds_new$study_ID == i,),]
   meds = strsplit(paste(unique(temp$Meds)), " ")
   debridepatient = nsti_debrid %>% subset(study_ID == i)
+  #creating the debride time then adding the time to last 
   debridedate = strptime(paste(debridepatient$DEBRIDE.1.START.DATE,debridepatient$DEBRIDE.1.START.TIME, sep = " "),"%Y-%m-%d %H:%M") +
                 debridepatient$Minutes.from.1st.Deb.to.last*60
   for (y in meds){
@@ -235,8 +213,18 @@ for (i in nsti_new$Patient){
     }
   }
 } 
-```
 
+# debtomed tuning, getting the maximium time 
+temp = medsdf %>% select(patient, debtomed)
+tempmedtodf = data.frame("patient" = character(), "debtomed" = integer())
+
+for (i in unique(temp$patient)){
+  temppatient = max((temp %>% subset(patient == i))$debtomed)
+  tempmedtodf = rbind(tempmedtodf, data.frame("patient" = i, "debtomed" = temppatient))
+}
+
+tempmedtodf
+```
 
 Vizualization towards understadning the new debride to med calculations 
 
@@ -246,11 +234,14 @@ ggplot(data = melt(medsdf %>% subset(admittolast <12500) %>% subset(diff < 500) 
   geom_boxplot() +
   facet_wrap(.~ variable, scale = "free")
 
+ggplot(data = melt(tempmedtodf %>% subset(debtomed >0) %>% subset(debtomed < 500)), aes(x=variable, y=value)) + 
+  geom_boxplot() 
 
+tempmedtodf %>% subset(debtomed < 0)
 ```
 
 ```{r fig.height = 10, fig.width = 15}
-
+# more visualizations towards understanding the graph
 ggplot(data = medsdf , aes( x = admittolast)) +
   geom_histogram() +
   scale_colour_gradientn(colours = terrain.colors(10)) + 
@@ -270,7 +261,7 @@ ggplot(data = medsdf , aes( x = debtomed)) +
 
 
 ```{r fig.height = 20, fig.width = 15}
-test = medsdf %>% subset(admittolast <12500) %>% subset(diff < 500) %>% subset(debtomed < 250)
+filteroutlier = medsdf %>% subset(admittolast <12500) %>% subset(diff < 500) %>% subset(debtomed < 250)
 
 ggplot(data = medsdf, aes(y = diff, x = admittolast)) +
   geom_point() +
@@ -278,11 +269,15 @@ ggplot(data = medsdf, aes(y = diff, x = admittolast)) +
   #facet_wrap(med~. ) +
   labs( x = "Admit to last debridement", y= "Difference from last to first med") +
   geom_text(aes(label=ifelse((admittolast>4*IQR(admittolast) | diff > 4*IQR(diff)),patient,"")), hjust=1.1)
-
-
 ```
 
+Starting to do the survival curve data and understanding which meds a patient is taking for each day from there first 
+
 ```{r warning= FALSE}
+# creates the df "medwane" such that it says what kind of medication each patient is taking on each day 
+
+#      med   /    patient     / daycount 
+
 medwane <- data.frame(patient = integer())
 
 for (i in nsti_new$Patient){
@@ -298,30 +293,57 @@ for (i in nsti_new$Patient){
       tempmednum = data.frame(unimed = length(unique(tempmed$Meds)), patient = i, daycount = daycount)
       tempmednum$meds = list(unique(tempmed$Meds))
       medwane = rbind(medwane, tempmednum)
-      
       theDate <- theDate + days(1)
     }
   }
-} 
-
-head(medwane$meds)
-
+}
 ```
 
-```{r fig.width= 20}
-
-#data.tree
-head(medwane)
-
+```{r fig.width= 60, fig.height= 30}
+# creates a df for a outputting it in a nested list format
 medwanetrans <- data.frame(patient = integer())
 
 for (i in unique(medwane$patient)){
   temp <- medwane[medwane$patient == i,]
   tempdf <- data.frame(patient = i)
-  tempdf$unimed <- list(temp$unimed)
+  #   tempdf$unimed <- list(temp$unimed)
+  tempdf$unimed <- list(replace(temp$unimed, temp$unimed> 5, 6))
   medwanetrans <- rbind(medwanetrans, tempdf)
 }
 
+medwanetrans$medcount <- sapply(medwanetrans$unimed, length)
+```
+
+```{r fig.width= 10, fig.height= 10}
+#understanding outlier patients 
+
+summary(medwanetrans$medcount)
+
+# patients with more than 100 
+medwanetrans %>% subset(medcount >= 100)
+
+# patients with 50 - 100
+medwanetrans %>% subset(medcount >= 50 & medcount < 100) 
+
+# patients with 25-50
+medwanetrans %>% subset(medcount >= 25 & medcount < 50) 
+
+# patients with 20- 25
+medwanetrans %>% subset(medcount >= 20 & medcount < 25) 
+
+tempmedwane = medwanetrans %>% subset(medcount < 28)
+ggplot(data = tempmedwane, aes( y=medcount)) + 
+  geom_boxplot() 
+
+tempmedwane =  data.frame("first" = sapply(medwanetrans$unimed, function(x) as.integer(x[[1]])))
+
+ggplot(data = tempmedwane, aes( x=first)) + 
+  geom_bar() 
+
+```
+
+```{r}
+# for the basic tree diagram. not usinig it right now 
 medwanetrans$pathString <- paste("Meds A day",sapply(medwanetrans$unimed, paste, collapse = "/"), medwanetrans$patient, sep = "/")
 
 medwanetrans$medcount <- sapply(medwanetrans$unimed, length)
@@ -334,39 +356,181 @@ png("test.png", width = 600, height = 600)
 plot(testTree)
 
 ToDiagrammeRGraph(testTree)
+```
 
+```{r}
 # Sankey Diagram
 
-head(medwane$meds[[3]])
+sankeynode <- data.frame("name" = character(), "node" = character())
+
+medwanesankey <- data.frame('source' = character(), 'target' = character(), 'value' = integer())
+
+for (i in (medwanetrans %>% subset(medcount <= 28))$patient){
+  temp = (medwanetrans %>% subset(patient == i))$unimed[[1]]
+  if (length(temp)> 1){
+    for (j in 2:length(temp)-1){
+      sourcetemp = paste(j,substr("ABCDEFGHJIKLMNOP", temp[j], temp[j]))
+      targettemp = paste(j+1,substr("ABCDEFGHJIKLMNOP", temp[j+1], temp[j+1]))
+        if (!sourcetemp %in% sankeynode$node){
+          sankeynode <- rbind(sankeynode, data.frame("name" = paste("Day ",j, ":", temp[j], sep = ""), "node" = sourcetemp))
+        }
+        if (!targettemp %in% sankeynode$node){
+          sankeynode <- rbind(sankeynode, data.frame("name" = paste("Day ",j+1, ":", temp[j+1], sep = ""), "node" = targettemp))
+        }
+      tempdf <- data.frame('source' = which(sankeynode$node == sourcetemp), 'target' = which(sankeynode$node == targettemp))
+      if (nrow(merge( tempdf, medwanesankey)) < 1) {
+        tempdf$value <- 1
+        medwanesankey <- rbind(medwanesankey, tempdf)
+      } else {
+        medwanesankey[which(medwanesankey$source == tempdf$source & medwanesankey$target == tempdf$target),]$value =  
+        medwanesankey[which(medwanesankey$source == tempdf$source & medwanesankey$target == tempdf$target),]$value + 1
+      }
+    }
+  }
+}
+
+
+library(networkD3)
+nodes = data.frame("name" = sankeynode$name)
+links = medwanesankey[with(medwanesankey,order(source,target)),]
+links$source = links$source -1
+links$target = links$target -1
 
 p <- plot_ly(
     type = "sankey",
+    domain = c(
+      x =  c(0,1),
+      y =  c(0,1)
+    ),
     orientation = "h",
-
+    arrangement = "perpendicular",
     node = list(
-      label = c("A1", "A2", "B1", "B2", "C1", "C2"),
-      color = c("blue", "blue", "blue", "blue", "blue", "blue"),
-      pad = 15,
-      thickness = 20,
+      label = nodes$name,
+      pad = 5,
+      thickness = 5,
       line = list(
         color = "black",
         width = 0.5
       )
     ),
-
     link = list(
-      source = c(0,1,0,2,3,3),
-      target = c(2,3,3,4,4,5),
-      value =  c(8,4,2,8,4,2)
+      source = links$source,
+      target = links$target,
+      value =  links$value,
+      label =  nodes$name
     )
-  ) %>% 
+) %>%
   layout(
-    title = "Basic Sankey Diagram",
-    font = list(
-      size = 10
-    )
-)
+    font = list( size = 15),
+    xaxis = list(showgrid = F, zeroline = F),
+    yaxis = list(showgrid = F, zeroline = F),
+    width = 1500, height = 900
+  )
+p
 
+chart_link = api_create(p, filename="sizing-1")
+chart_link
+```
+
+```{r fig.height= 15, fig.width = 15}
+#survival curve 
+
+library(ggfortify)
+library(survminer)
+library(survival)
+head(medwane)
+
+medwane <- data.frame(patient = integer())
+
+#This does not work with the survival package. Use the medwane admit or the medwanenew 
+for (i in nsti_new$Patient){
+  if ((which(nstimeds_new$study_ID == i) %>% is_empty()) != TRUE){
+    temp <- nstimeds_new[which(nstimeds_new$study_ID == i,),]
+    temptime <- temp[order(temp["totalTime"]),]
+    theDate <- head(temptime$totalTime, 1)
+    end <- tail(temptime$totalTime, 1)
+    daycount = 0
+    while (theDate <= end){
+      daycount = daycount + 1
+      tempmed <- temptime %>% subset(totalTime >= theDate) %>% subset(totalTime <= theDate + days(1))
+      if (length(tempmed$Meds) != 0){
+        tempmednum <- data.frame("med" = unlist(unique(tempmed$Meds)), patient = as.integer(i), daycount = as.integer(daycount))
+      } else {
+        tempmednum <- data.frame("med" = c(""), patient = as.integer(i), daycount = as.integer(daycount))
+      }
+      medwane = rbind(medwane, tempmednum)
+      
+      theDate <- theDate + days(1)
+    }
+    if (tempmednum != 0){
+      medwane = rbind(medwane, data.frame("med" = c(""), patient = as.integer(i), daycount = as.integer(daycount+1)))
+    }
+  }
+}
+
+medwanenew <- data.frame(patient = integer(), med = character(), status = integer(), daycount = integer())
+# resctructuring of data for better survival curve 
+for (i in 2:nrow(survtest)){
+  temp = survtest[i,] %>% select( -c(patient, daycount, Var.3))
+  previous = survtest[(i-1),] %>% select( -c(patient, daycount, Var.3))
+  for (j in 1:length(temp)){
+    if (temp[j] == 0 & previous[j] == 1){
+      medwanenew <- rbind(medwanenew, data.frame(patient = survtest[i,]$patient, med = names(temp[j]), status = 1,daycount = survtest[i,]$daycount))
+    } 
+  }
+}
+
+#editing survival curve for admission
+medwaneadmit <- data.frame(patient = integer(), status = integer(), daycount = integer())
+for (i in nsti_new$Patient){
+  if ((which(nstimeds_new$study_ID == i) %>% is_empty()) != TRUE){
+    temp <- nstimeds_new[which(nstimeds_new$study_ID == i,),]
+    temptime <- temp[order(temp["totalTime"]),]
+    admission <- (nsti_new %>% subset(Patient == i))$ADMIT.DATE
+    end <- tail(temptime,1)$totalTime
+    discharge <- (nsti_new %>% subset(Patient == i))$Discharge
+    
+    if (discharge > end){
+      medwaneadmit <- rbind(medwaneadmit, data.frame(patient = i, status = 1,daycount = difftime(end,admission)))
+    } else {
+      medwaneadmit <- rbind(medwaneadmit, data.frame(patient = i, status = 0,daycount = difftime(discharge,admission)))
+    }
+  }
+}
+
+#chances the df to be a better format. Works only on medwane
+survtest <- dcast(medwane, patient + daycount ~ med, fun.aggregate = length, value.var = "med")
+
+#filtersurv <- survtest %>% subset(daycount <200)
+#filtersurv <- survtest[! survtest$patient %in% c(unique((survtest %>% subset(daycount > 100))$patient)),]
+#filtersurv <- filtersurv[!filtersurv$patient %in% c(74,134,149,15,734),]
+#filtersurv <- survtest[ survtest$patient %in% c(unique(survtest %>% subset(daycount == 1) %>% subset(CLIN == 1))$patient),]
+
+#survival Curve 
+fit <- surv_fit(Surv( time = daycount, event= status) ~1, data = medwaneadmit, conf.type = "log-log") 
+#autoplot(fit)
+ggsurvplot(fit, data = medwaneadmit, risk.table = TRUE)
+```
+
+```{r}
+#WBC
+
+NSTI_labs %>% subset(Lab.Code == "WBC") %>% subset(TRACKING.NO == 1)
+
+medwaneadmit <- data.frame(patient = integer(), status = integer(), daycount = integer())
+for (i in nsti_new$Patient){
+  if ((which(nstimeds_new$study_ID == i) %>% is_empty()) != TRUE){
+    temp <- nstimeds_new[which(nstimeds_new$study_ID == i,),]
+    temptime <- temp[order(temp["totalTime"]),]
+    end <- tail(temptime,1)$totalTime
+    
+    if (discharge > end){
+      medwaneadmit <- rbind(medwaneadmit, data.frame(patient = i, status = 1,daycount = difftime(end,admission)))
+    } else {
+      medwaneadmit <- rbind(medwaneadmit, data.frame(patient = i, status = 0,daycount = difftime(discharge,admission)))
+    }
+  }
+}
 ```
 
 
@@ -411,24 +575,6 @@ for (i in nsti$Patient){
   nsti[nsti$Patient == i,]$medsort <- list(medsdf)
 } 
 ```
-
-
-
-```{r}
-#head(nsti$medsort)
-```
-
-```{r}
-#ggplot(data = medsdf, aes(x = as.numeric(row.names(medsdf)),y = hours)) + 
-#  geom_step(direction = "hv")
-  
-```
-
-```{r}
-#ggplot(data = tail(medsdf,-3), aes(x = as.numeric(row.names(tail(medsdf,-3))),y = hours)) + 
-#  geom_step(direction = "hv")
-```
-
 
 ```{r}
 # graphing all of the points from patients 
@@ -551,7 +697,8 @@ ggplot(data = filteredtest, aes(x = admittolast, fill = med)) +
 
 ggplot(data = filteredtest, aes(x = admittolast, fill = med)) +
   geom_histogram(position = "stack")
-``` q
+``` 
+
 ```{r fig.height = 20, fig.width = 15}
 
 highdatamed = test[which(test$med == "CLIN"| test$med == "MERO" |test$med == "PCNG" |test$med == "VANC" ),]
@@ -560,10 +707,6 @@ ggplot(data = test[which(test$patient == 1),], aes(x = order, y = diff, col = pa
   facet_grid(med~. )+
   theme(legend.position = "none") 
 
-```
-
-```{r}
-CPPROC2014 %>% subset(PROC == 9670)
 ```
 
 
