@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "NSTI Analysis"
 output:
   html_document:
     df_print: paged
@@ -21,13 +21,12 @@ library(data.tree)
 library(plotly)
 library(d3r)
 library(htmltools)
-#library(rhtmlSankeyTree)
 
 # Importing dataset
 nsti <- data.frame(fread("NSTI_for_KL.csv", header = TRUE))
 nsti_debrid <- data.frame(fread("NSTI_debride_for_KL.csv", header = TRUE))
-nsti_Meds <- data.frame(fread("NSTI_meds_for_KL.csv",header = TRUE))
-NSTI_labs <- data.frame(fread("NSTI_WBC_updated_for_KL.csv", header = TRUE))
+nsti_meds <- data.frame(fread("NSTI_meds_for_KL.csv",header = TRUE))
+nsti_labs <- data.frame(fread("NSTI_WBC_updated_for_KL.csv", header = TRUE))
 ```
 
 # Overview
@@ -60,46 +59,8 @@ To understand/quantify the time between last debridement and last medication cha
 
 **Features** (nsti: 78 variables)
 
-**Numerical**
-
-- Patient, Age, Race
-- Discharge Date
-- Outcome?? (categorical)
-- Admit date (x /y??)
-- ICU los??, ICU hours (num)
-- Hosp los?? (num)
-- Vent Days(num) 
-- DC dispo (categorical)
-- Mech of infection (categorical)
-
-**Categorical**
-
-- Comorbid codes (Categorical seperated by ";")
-- co.morbids (numerical)
-- location code 1,2 (categorical, only on some patients)
-- ICD 10 code & description / ICD 10 2 missing?? 
-- Region (categorical)
-- debirdment count (numerical - int)
-- direct cost days? (only on some patients)
-- direct/indirect cost/total cost (numerical)
-- direct cost index / pb hmc (direct/inndirect/total cost) / pb uwp gross charges / cost allocation (only on some patients )
-- Vent free days (numerical)
-- insurance & type (categorical)
-
-**Binary**
-
-- Transfer (binary)
-- **transfer** duplicate 
-- Debridement
-- Ards, arf cauti, cdiff, clabsi, cva, cpr, decub, dvt, unplanned (ett & or), mi, pe, sepsis, vap, withdrawl, bleeding, chf, cirr, crf, cva, dm, dementia, drug abuse, etoh abuse, htn, MI, resp, smoker, amputation
-- death 
-- is female
-- highest quartile cost 
-- public/private/uninsured insurance
-- other??
-
 ```{r}
-# stats of the inital files 
+# Stats of the inital files 
 summary(nsti)
 head(nsti)
 ```
@@ -108,15 +69,13 @@ head(nsti)
  knitr::knit_exit()
 ```
 
-```{r}
-#removing the duplicate transfer binary 
-nsti <- subset(nsti, select = -c(TRANSFER,OUTCOME, isFemale))
-```
-
 # Data Cleaning 
 
 **Nsti**
 ```{r}
+#removing the duplicate transfer binary 
+nsti <- subset(nsti, select = -c(TRANSFER,OUTCOME, isFemale))
+
 # Extracting numerical identifier
 nsti["Patient"] <- lapply(nsti["Patient"], function(x) str_sub(x, 1,-6))
 
@@ -135,13 +94,9 @@ nsti[cols] <- lapply(nsti[cols], as.factor)
 
 #replacing NOT in race to NA
 nsti$RACE[ nsti$RACE == "NOT"] <- NA
-```
 
-Region is weird case in which is can have more than one region. Not sure how we want to address this.
-Issue with patient 179*NSTI or V1 (70) which has a co.morbids value of asthma 
-
-```{r}
-nsti[nsti$V1 == 70,]
+# Fixing mistake on patient 179
+nsti[nsti$Patient == '179',]$CO.MORBIDS = 13
 ```
 
 **Debrid**
@@ -166,7 +121,9 @@ cols <- c("Meds", "Med.Location")
 nsti_Meds[cols] <- lapply(nsti_Meds[cols], as.factor)
 ```
 
-Structuring the time data in medication
+# Data Manipulation
+
+Structuring the time data in nsti_med
 ```{r}
 #creating a new dataframe with only these medications 
 nstimeds_new <- data.frame(nsti_Meds[nsti_Meds["Meds"] != c("DOBU", "ENOX", "EPINEP", "NOPRESS", "STERIOD", "VASO", "WARF", 
