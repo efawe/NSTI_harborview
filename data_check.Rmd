@@ -21,12 +21,16 @@ library(data.tree)
 library(plotly)
 library(d3r)
 library(htmltools)
+library(Vennerable)
+library(venn)
+library(UpSetR)
 
 # Importing dataset
 nsti <- data.frame(fread("NSTI_for_KL.csv", header = TRUE))
 nsti_debrid <- data.frame(fread("NSTI_debride_for_KL.csv", header = TRUE))
 nsti_meds <- data.frame(fread("NSTI_meds_for_KL.csv",header = TRUE))
 nsti_labs <- data.frame(fread("NSTI_WBC_updated_for_KL.csv", header = TRUE))
+test <- read.csv("ven_med.csv")
 ```
 
 # Overview
@@ -58,6 +62,57 @@ To understand/quantify the time between last debridement and last medication cha
 # Overview on features
 
 **Features** (nsti: 78 variables)
+
+```{r}
+ven_med
+CLIN = which(test$CLIN == 1)
+CIPR = which(test$CIPR == 1)
+GENT = which(test$GENT == 1)
+LEVO = which(test$LEVO == 1)
+MERO = which(test$MERO == 1)
+METR = which(test$METR == 1)
+PCNG = which(test$PCNG == 1)
+
+head(test)
+
+ven_df =list( CLIN=CLIN,CIPR = CIPR, GENT =GENT, LEVO = LEVO, MERO= MERO, METR =METR, PCNG= PCNG)
+
+```
+
+```{r}
+ven_df %>% venn::venn(zcolor = "style",
+             # Increase font size for labels and values
+             cexsn = 1, 
+             cexil = 1,
+             borders = FALSE)
+
+test
+
+test
+
+test$patient.x <- NULL
+test$patient.x.1 <- NULL
+```
+```{r fig.width= 15}
+upset(
+  test,
+  # Careful: we have to manually specify how many subsets 
+  # we want to display (we can also specify them by column name),
+  # and also set nintersects to NA if we are interested in all (non-empty)
+  # intersections. It is still a bit fuzzy when it has to display empty intersections
+  # on so many sets, but there is an option to do that, if wanted.
+  nsets = ncol(test),
+  nintersects = NA,
+  # Display them from the most numerous intersection to the least
+  order.by = "freq",
+  line.size = 1.5,
+  point.size = 3,
+  text.scale = 1.5
+)
+```
+
+
+
 
 ```{r}
 # Stats of the inital files 
