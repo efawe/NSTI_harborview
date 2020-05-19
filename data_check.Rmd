@@ -33,38 +33,8 @@ nsti_labs <- data.frame(fread("NSTI_WBC_updated_for_KL.csv", header = TRUE))
 test <- read.csv("ven_med.csv")
 ```
 
-# Overview
-
-# File Breakdown
-
-*nsti* : contains demographic data, cost (inaccurate), insurance, etc on all patients
-
-*NSTI_meds* contains antibiotics taken over the course of the patients stay 
-
-*nsti_debrid* contains all of the debridement events and reconstruction events
-
-*NSTI_labs* contains WBC on debridement events (Currently inaccurate)
-
-# Purpose
-
-To understand/quantify the time between last debridement and last medication change 
- - Why?
- 
-# Future goals 
-
-**WBC association** To see if the WBC can be associated and tracked onside the medication changes 
-
-**"Total Cost"** Ask: How is cost assocaited with the medication changes   
-
-**Goal** is to determine whether there are characteristics that predict who will cost the most (top quartile).
-
-
-# Overview on features
-
-**Features** (nsti: 78 variables)
 
 ```{r}
-ven_med
 CLIN = which(test$CLIN == 1)
 CIPR = which(test$CIPR == 1)
 GENT = which(test$GENT == 1)
@@ -72,10 +42,12 @@ LEVO = which(test$LEVO == 1)
 MERO = which(test$MERO == 1)
 METR = which(test$METR == 1)
 PCNG = which(test$PCNG == 1)
+PIPE = which(test$PIPE == 1)
+VANC = which(test$VANC == 1)
 
 head(test)
 
-ven_df =list( CLIN=CLIN,CIPR = CIPR, GENT =GENT, LEVO = LEVO, MERO= MERO, METR =METR, PCNG= PCNG)
+ven_df =list( CLIN=CLIN,CIPR = CIPR, GENT =GENT, LEVO = LEVO, MERO= MERO, METR =METR, PCNG= PCNG,PIPE = PIPE, VANC =VANC)
 
 ```
 
@@ -93,6 +65,32 @@ test
 test$patient.x <- NULL
 test$patient.x.1 <- NULL
 ```
+
+```{r}
+movies
+upset(
+  movies,
+  # Careful: we have to manually specify how many subsets 
+  # we want to display (we can also specify them by column name),
+  # and also set nintersects to NA if we are interested in all (non-empty)
+  # intersections. It is still a bit fuzzy when it has to display empty intersections
+  # on so many sets, but there is an option to do that, if wanted.
+  nsets = 10,
+  nintersects = NA,
+  # Display them from the most numerous intersection to the least
+  order.by = "freq",
+  line.size = 1.5,
+  point.size = 3,
+  text.scale = 1.5
+)
+```
+
+
+```{r}
+typeof(test)
+```
+
+
 ```{r fig.width= 15}
 upset(
   test,
@@ -101,7 +99,7 @@ upset(
   # and also set nintersects to NA if we are interested in all (non-empty)
   # intersections. It is still a bit fuzzy when it has to display empty intersections
   # on so many sets, but there is an option to do that, if wanted.
-  nsets = ncol(test),
+  sets = c('CLIN','CIPR' , 'GENT' , 'LEVO' , 'MERO', 'METR' , 'PCNG','PIPE' , 'VANC'),
   nintersects = NA,
   # Display them from the most numerous intersection to the least
   order.by = "freq",
